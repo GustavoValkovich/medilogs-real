@@ -1,0 +1,46 @@
+# Medilogs API
+@baseUrl = http://localhost:3000
+
+################################################################################
+## Sequence to test (execute in order):
+## 1- Create a doctor
+## 2- Delete that doctor
+## 3- Create a second doctor
+## 4- Login with second doctor
+## 5- Create a patient
+## 6- SoftDelete that patient
+## 7- Create a second patient
+## 8- Create a consultation for the second patient
+## 9- SoftDelete the consultation
+## 10- SoftDelete the second patient
+################################################################################
+
+## 1- Create doctor 1
+$doc1 = Invoke-RestMethod -Uri 'http://localhost:3000/api/doctors' -Method Post -ContentType 'application/json' -Body (@{ first_name='Emiliano'; last_name='Druetta'; specialty='Cardiologo'; license_number='1001'; password='admin1' } | ConvertTo-Json)
+
+## 2- Delete doctor 1
+Invoke-RestMethod -Uri "http://localhost:3000/api/doctors/$($doc1.id)" -Method Delete
+
+## 3- Create doctor 2
+$doc2 = Invoke-RestMethod -Uri 'http://localhost:3000/api/doctors' -Method Post -ContentType 'application/json' -Body (@{ first_name='Diana'; last_name='Valkovich'; specialty='Otorrino'; license_number='2002'; email='diana@gmail.com'; password='admin2' } | ConvertTo-Json)
+
+## 4- Login with second doctor
+$login = Invoke-RestMethod -Uri 'http://localhost:3000/api/doctors/login' -Method Post -ContentType 'application/json' -Body (@{ email='diana@gmail.com'; password='admin2' } | ConvertTo-Json)
+
+## 5- Create a patient (patient 1)
+$pat1 = Invoke-RestMethod -Uri "http://localhost:3000/api/patients" -Method Post -ContentType 'application/json' -Body (@{ doctor_id = $doc2.id; full_name = 'Paciente1 Diana'; document = '36372460'; birth_date = '1991-02-03' } | ConvertTo-Json)
+
+## 6- SoftDelete that patient (soft delete via POST)
+Invoke-RestMethod -Uri "http://localhost:3000/api/patients/$($pat1.id)/soft-delete" -Method Post -ContentType 'application/json' -Body '{}'
+
+## 7- Create a second patient (patient 2)
+$pat2 = Invoke-RestMethod -Uri "http://localhost:3000/api/patients" -Method Post -ContentType 'application/json' -Body (@{ doctor_id = $doc2.id; full_name = 'Paciente2 Diana'; document = '37254256'; birth_date = '1985-05-05' } | ConvertTo-Json)
+
+## 8- Create a consultation for patient 2
+$cons = Invoke-RestMethod -Uri "http://localhost:3000/api/consultations" -Method Post -ContentType 'application/json' -Body (@{ patient_id = $pat2.id; description = 'Initial consult'; date = '2025-11-17' } | ConvertTo-Json)
+
+## 9- Delete the consultation (soft delete via POST)
+Invoke-RestMethod -Uri "http://localhost:3000/api/consultations/$($cons.id)/soft-delete" -Method Post -ContentType 'application/json' -Body '{}'
+
+## 10- Delete the second patient (soft delete via POST)
+Invoke-RestMethod -Uri "http://localhost:3000/api/patients/$($pat2.id)/soft-delete" -Method Post -ContentType 'application/json' -Body '{}'
