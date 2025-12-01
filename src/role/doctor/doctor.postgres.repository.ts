@@ -8,8 +8,18 @@ export class DoctorPostgresRepository implements DoctorRepository {
     return (res.rows as Doctor[]) || undefined;
   }
 
+  async findByEmail(email: string): Promise<Doctor | undefined> {
+    const res = await pool.query('SELECT * FROM doctors WHERE email = $1', [email]);
+    return (res.rows[0] as Doctor) || undefined;
+  }
+
   async findOne(id: string): Promise<Doctor | undefined> {
     const res = await pool.query('SELECT * FROM doctors WHERE id = $1', [id]);
+    return (res.rows[0] as Doctor) || undefined;
+  }
+  
+  async findByGoogleId(googleId: string): Promise<Doctor | undefined> {
+    const res = await pool.query('SELECT * FROM doctors WHERE google_id = $1', [googleId]);
     return (res.rows[0] as Doctor) || undefined;
   }
 

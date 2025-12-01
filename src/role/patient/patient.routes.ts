@@ -42,7 +42,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(created);
   } catch (err: any) {
   console.error('Error creating patient:', err);
-  return res.status(500).json({ message: 'Error interno al crear paciente', error: err?.message || String(err) });
+  return res.status(500).json({ message: 'Error interno al crear paciente' });
   }
 });
 
@@ -86,7 +86,7 @@ router.post('/:id/soft-delete', async (req, res) => {
     res.json(updated);
   } catch (err: any) {
     console.error('Error soft-deleting patient:', err);
-    res.status(500).json({ message: 'Error interno al eliminar paciente', error: err?.message || String(err) });
+    res.status(500).json({ message: 'Error interno al eliminar paciente' });
   }
 });
 
@@ -98,7 +98,7 @@ router.post('/:id/restore', async (req, res) => {
     res.json(restored);
   } catch (err: any) {
     console.error('Error restoring patient:', err);
-    res.status(500).json({ message: 'Error interno al restaurar paciente', error: err?.message || String(err) });
+    res.status(500).json({ message: 'Error interno al restaurar paciente' });
   }
 });
 

@@ -1,10 +1,14 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import passport from 'passport';
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { DoctorPostgresRepository } from './doctor.postgres.repository.js';
 import { Doctor } from './doctor.entity.js';
 import { DoctorController } from './doctor.controller.js';
 
 const router = express.Router();
+router.use(passport.initialize());
 const repo = new DoctorPostgresRepository();
 const controller = new DoctorController(repo);
 
@@ -41,15 +45,105 @@ router.post('/', async (req, res) => {
 router.post('/login', async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
   if (!email || !password) return res.status(400).json({ message: 'Email y password requeridos' });
-  const all = await repo.findAll();
-  const user = (all || []).find((d) => (d as any).email === email);
+  const user = await repo.findByEmail(email);
   if (!user) return res.status(401).json({ message: 'Credenciales inválidas' });
   const hashed = (user as any).password;
   const match = hashed ? await bcrypt.compare(password, hashed) : false;
   if (!match) return res.status(401).json({ message: 'Credenciales inválidas' });
   const result = { ...user } as any;
   if (result.password) delete result.password;
-  res.json({ user: result });
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    // server misconfiguration: JWT secret missing
+    // eslint-disable-next-line no-console
+    console.error('JWT_SECRET is not configured');
+    return res.status(500).json({ message: 'Server misconfiguration' });
+  }
+  const token = jwt.sign({ sub: (user as any).id, email: (user as any).email, role: 'doctor' }, secret, { expiresIn: '1h' });
+  res.json({ user: result, token });
+});
+
+// Configure Google OAuth strategy if env provided
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const googleCallback = process.env.OAUTH_REDIRECT_URI; // should match Google console
+
+if (googleClientId && googleClientSecret && googleCallback) {
+  passport.use(new GoogleStrategy({
+    clientID: googleClientId,
+    clientSecret: googleClientSecret,
+    callbackURL: googleCallback,
+  }, async (accessToken, refreshToken, profile, done) => {
+    try {
+      const googleId = profile.id;
+      const emails = (profile as any).emails as Array<any> | undefined;
+      const email = emails && emails.length > 0 ? emails[0].value : undefined;
+
+      let user = await repo.findByGoogleId(googleId);
+      if (!user && email) {
+        user = await repo.findByEmail(email);
+        if (user) {
+          // link existing account by setting google_id
+          await repo.partialUpdate((user as any).id, { google_id: googleId } as any);
+        }
+      }
+
+      if (!user) {
+        // create a minimal doctor record from Google profile
+        const names = (profile as any).name || {};
+        const first = names.givenName || names.familyName || 'Google';
+        const last = names.familyName || '';
+        const randomPwd = Math.random().toString(36).slice(-12);
+        const salt = await bcrypt.genSalt(10);
+        const hashed = await bcrypt.hash(randomPwd, salt);
+        const newDoctor: any = {
+          first_name: first,
+          last_name: last,
+          specialty: 'general',
+          phone: undefined,
+          email: email,
+          license_number: `google-${googleId}`,
+          password: hashed,
+          google_id: googleId,
+        };
+        const created = await repo.add(newDoctor);
+        user = created as any;
+      }
+
+      if ((user as any).password) delete (user as any).password;
+      return done(null, user);
+    } catch (err) {
+      return done(err as Error);
+    }
+  }));
+} else {
+  // eslint-disable-next-line no-console
+  console.warn('Google OAuth not configured: set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OAUTH_REDIRECT_URI');
+}
+
+// Start OAuth flow
+router.get('/auth/google', (req, res, next) => {
+  if (!googleClientId || !googleClientSecret || !googleCallback) return res.status(500).json({ message: 'Google OAuth not configured' });
+  // use passport to redirect to Google
+  passport.authenticate('google', { scope: ['profile', 'email'], session: false })(req, res, next);
+});
+
+// Callback: passport will call our strategy and attach the user to req.user
+router.get('/auth/google/callback', (req, res, next) => {
+  if (!googleClientId || !googleClientSecret || !googleCallback) return res.status(500).json({ message: 'Google OAuth not configured' });
+  passport.authenticate('google', { session: false }, (err, user: any) => {
+    if (err) {
+      // eslint-disable-next-line no-console
+      console.error('Google OAuth error:', err);
+      return res.status(500).json({ message: 'OAuth error' });
+    }
+    if (!user) return res.status(401).json({ message: 'Authentication failed' });
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return res.status(500).json({ message: 'Server misconfiguration' });
+    const token = jwt.sign({ sub: user.id, email: user.email, role: 'doctor' }, secret, { expiresIn: '1h' });
+    if ((user as any).password) delete (user as any).password;
+    return res.json({ user, token });
+  })(req, res, next);
 });
 
 router.put('/:id', async (req, res) => {

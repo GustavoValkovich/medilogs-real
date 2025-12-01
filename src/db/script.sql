@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS doctors (
   specialty       VARCHAR(255) NOT NULL,
   phone           VARCHAR(50),
   email           VARCHAR(255),
+  google_id       VARCHAR(255),
   license_number  VARCHAR(100) NOT NULL,
   password        VARCHAR(255) NOT NULL,
   created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -28,6 +29,13 @@ CREATE TRIGGER update_doctors_updated_at
   BEFORE UPDATE ON doctors
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
+
+-- Ensure existing DBs get the new column when this script is re-run
+ALTER TABLE doctors ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);
+
+-- Indexes to speed up lookups by email and google_id
+CREATE INDEX IF NOT EXISTS idx_doctors_email ON doctors (email);
+CREATE INDEX IF NOT EXISTS idx_doctors_google_id ON doctors (google_id);
 
 -- Table: patients
 
